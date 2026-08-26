@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./ark-video.css";
+import "./viral-agent.css";
 
 export const metadata: Metadata = {
   title: "爆款前5秒 · AI 视频创作工作台",

@@ -1,0 +1,241 @@
+textarea {
+  font: inherit;
+}
+
+.performanceCard {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.7fr) 1.3fr;
+  gap: 22px;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.performanceCard h3,
+.performanceCard p {
+  margin: 0 0 6px;
+}
+
+.performanceCard textarea,
+.formGrid textarea,
+.formGrid input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #faf9f6;
+  border-radius: 9px;
+  padding: 10px;
+  color: var(--ink);
+  resize: vertical;
+}
+
+.agentError {
+  margin: 18px 0 0;
+  padding: 13px 16px;
+  border: 1px solid #efb3a7;
+  border-radius: 11px;
+  background: #fff0ed;
+  color: #9b321f;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.agentSection {
+  margin-bottom: 20px;
+}
+
+.transcriptRow {
+  display: grid;
+  grid-template-columns: 104px 150px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+
+.transcriptRow strong {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.transcriptRow small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.transcriptRow p,
+.sourceNote,
+.metricNote,
+.reviewItem,
+.warningItem {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.sourceNote {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  background: #f5f3ef;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.metricNote {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.detailedShots > div {
+  grid-template-columns: 36px 84px 1fr 94px;
+  align-items: start;
+}
+
+.detailedShots p {
+  line-height: 1.6;
+}
+
+.detailedShots p small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.shotPurpose {
+  display: inline-block;
+  margin-right: 7px;
+  color: var(--green);
+}
+
+.reviewItem,
+.warningItem {
+  border-top: 1px solid var(--line);
+  padding: 10px 0 0 16px;
+  margin-top: 10px;
+  position: relative;
+}
+
+.reviewItem::before {
+  content: "·";
+  position: absolute;
+  left: 2px;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.warningItem {
+  color: #8a5523;
+}
+
+.handoffGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.handoffGrid > div {
+  padding: 14px;
+  border-radius: 10px;
+  background: #f6f4ef;
+}
+
+.handoffGrid small {
+  color: var(--muted);
+}
+
+.handoffGrid p {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+.formGrid .fullField {
+  grid-column: 1 / -1;
+}
+
+.inlineChecks {
+  margin-top: 7px;
+  padding: 11px;
+  background: #faf9f6;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.inlineChecks span {
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.variantTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.variantTabs button {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  color: var(--muted);
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.variantTabs button.active {
+  border-color: var(--accent);
+  background: #fff0eb;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.reviewBadge {
+  float: right;
+  padding: 5px 8px;
+  border-radius: 99px;
+  background: #fff1d9;
+  color: #875923;
+  font-size: 9px;
+}
+
+.managedApi {
+  grid-template-columns: 42px 1fr auto;
+}
+
+.managedApi .serverManaged {
+  margin-top: 14px;
+}
+
+.managedApi > span.connectedBadge {
+  background: #e7f5ed;
+  color: var(--green);
+}
+
+@media (max-width: 900px) {
+  .performanceCard,
+  .transcriptRow,
+  .handoffGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .transcriptRow {
+    gap: 5px;
+  }
+}
+
+@media (max-width: 600px) {
+  .detailedShots > div {
+    grid-template-columns: 30px 64px 1fr;
+  }
+
+  .detailedShots > div > span {
+    display: none;
+  }
+
+  .managedApi {
+    grid-template-columns: 34px 1fr;
+  }
+}
