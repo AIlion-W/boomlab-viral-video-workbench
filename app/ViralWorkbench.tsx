@@ -38,6 +38,15 @@ function readError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function textFingerprint(value: string): string {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 type VideoMetadata = {
   duration: number;
   width: number;
@@ -637,7 +646,7 @@ function DeliveryStep({ result, activeVariant, setActiveVariant, setStep, copyAc
       <section className="resultHead"><div><em>GEMINI DELIVERY</em><h2>{variant.title}</h2><p>{variant.positioning}</p></div><div><button type="button" className="secondary" onClick={() => void copyActive()}>复制当前版</button><button type="button" onClick={downloadAll}>导出全部 TXT</button></div></section>
       <section className="paper"><div><em>01</em><article><h3>脚本定位</h3><p>{variant.positioning}</p></article></div><div><em>02</em><article><h3>基础设定</h3><p>{variant.basicSetting}</p></article></div><div><em>03</em><article><h3>专业分镜脚本</h3>{variant.shots.map((shot, index) => <div className="scriptShot" key={`${shot.title}-${index}`}><b>{String(index + 1).padStart(2, "0")}</b><div><h4>{shot.title} · {shot.timeRange}</h4><p><strong>{shot.camera}</strong><br />{shot.visual}</p><small>音效：{shot.audio} ｜ 转场：{shot.transition}</small></div></div>)}</article></div></section>
       <div className="twoCols"><section className="card"><h3>合规终检 <span className={variant.complianceChecks.every((item) => item.status === "通过") ? "ok" : "reviewBadge"}>{variant.complianceChecks.every((item) => item.status === "通过") ? "全部通过" : "存在存疑项"}</span></h3>{variant.complianceChecks.map((item) => <p className={item.status === "通过" ? "check" : "warningItem"} key={`${item.label}-${item.detail}`}>{item.status === "通过" ? "✓" : "⚠️"} {item.label}：{item.detail}</p>)}</section><section className="card"><h3>出片提醒</h3>{variant.reminders.map((item) => <p className="reviewItem" key={item}>{item}</p>)}</section></div>
-      <ArkVideoGenerator key={variant.id} defaultPrompt={variant.seedancePrompt} productImage={productImage} sourceRatio={sourceRatio} sourceDurationSeconds={sourceDurationSeconds} />
+      <ArkVideoGenerator key={`${variant.id}:${textFingerprint(variant.seedancePrompt)}`} defaultPrompt={variant.seedancePrompt} productImage={productImage} sourceRatio={sourceRatio} sourceDurationSeconds={sourceDurationSeconds} />
       <div className="actions"><button type="button" className="secondary" onClick={() => setStep(3)}>← 调整改写参数</button></div>
     </>
   );

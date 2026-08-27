@@ -1,3 +1,5 @@
+import { normalizeSingleProductPrompt } from "./seedance-prompt";
+
 const ARK_API_BASE =
   "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks";
 
@@ -301,7 +303,7 @@ export async function createArkTask(
 ): Promise<{ id: string }> {
   const references = referenceContent(input);
   const prompt = input.imageUrls.length
-    ? input.prompt.replaceAll("@产品图", "@图像1")
+    ? normalizeSingleProductPrompt(input.prompt, "@图像1")
     : input.prompt;
   const payload = await arkFetch("", {
     method: "POST",

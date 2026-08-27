@@ -171,7 +171,7 @@ function sampleRewrite(count = 1) {
     id: "main",
     title: "咖啡牙渍 · 15 秒主推",
     positioning: "真人实拍｜去渍美白｜15 秒",
-    basicSetting: "清晨洗手台，@产品图 雷允上美白去渍牙膏。",
+    basicSetting: "@白牙齿图 在清晨洗手台，3D 皮克斯式渲染，@产品图 雷允上美白去渍牙膏。",
     shots: [
       {
         title: "痛点点名",
@@ -186,7 +186,7 @@ function sampleRewrite(count = 1) {
       { label: "功效依据", status: "通过", detail: "仅使用知识库3内容" },
     ],
     reminders: ["使用高清产品参考图"],
-    seedancePrompt: "清晨洗手台真人实拍，人物展示 @产品图。",
+    seedancePrompt: "@白牙齿图 在 @场景图 展示 @产品图，3D 皮克斯式渲染。",
   };
   return {
     variants: Array.from({ length: count }, (_, index) => ({
@@ -349,10 +349,18 @@ test("validates rewrite handoff and returns the requested script count", async (
     const payload = await response.json();
     assert.equal(payload.variants.length, 1);
     assert.equal(payload.variants[0].seedancePrompt.includes("@产品图"), true);
+    assert.doesNotMatch(
+      payload.variants[0].seedancePrompt,
+      /皮克斯|@白牙齿图|@场景图/,
+    );
     assert.doesNotMatch(JSON.stringify(payload), /openlux-rewrite-test-key/);
     const upstream = JSON.parse(requests[0].init.body);
     assert.match(upstream.contents[0].parts[0].text, /阶段三/);
     assert.match(upstream.contents[0].parts[0].text, /十项改写参数/);
+    assert.match(
+      upstream.contents[0].parts[0].text,
+      /只允许使用 @产品图/,
+    );
     assert.equal(upstream.generationConfig.responseSchema.properties.variants.minItems, 1);
 
     const threeOptions = { ...analysis.defaults, variantCount: 3 };
@@ -457,7 +465,7 @@ test("keeps Ark credentials server-side and normalizes task results", async () =
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        prompt: "第一人称果茶广告",
+        prompt: "@白牙齿图 展示 @产品包装图，背景是 @场景图",
         imageUrls: ["https://example.com/product.jpg"],
         duration: 11,
         ratio: "16:9",
@@ -480,6 +488,8 @@ test("keeps Ark credentials server-side and normalizes task results", async () =
     assert.equal(upstreamBody.model, "doubao-seedance-2-5-260628");
     assert.equal(upstreamBody.omni_reference_task_type, "reference");
     assert.equal(upstreamBody.content[1].role, "reference_image");
+    assert.equal(upstreamBody.content[0].text, "展示 @图像1，背景是");
+    assert.doesNotMatch(upstreamBody.content[0].text, /@白牙齿图|@场景图/);
     assert.equal("service_tier" in upstreamBody, false);
 
     const queryResponse = await request("/api/seedance/tasks/cgt-test1234");

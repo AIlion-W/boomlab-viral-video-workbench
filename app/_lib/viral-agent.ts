@@ -2,6 +2,7 @@ import analysisKnowledge from "../../knowledge/viral-agent/analysis.md?raw";
 import instructions from "../../knowledge/viral-agent/instructions.md?raw";
 import productKnowledge from "../../knowledge/viral-agent/product.md?raw";
 import seedanceKnowledge from "../../knowledge/viral-agent/seedance.md?raw";
+import { normalizeSingleProductPrompt } from "./seedance-prompt";
 import type {
   AnalysisResult,
   RewriteOptions,
@@ -825,7 +826,21 @@ function parseRewriteResponse(
     );
     requireStringArray(variant, "reminders", 20);
   });
-  return value as unknown as RewriteResponse;
+  const response = value as unknown as RewriteResponse;
+  response.variants.forEach((variant) => {
+    variant.title = normalizeSingleProductPrompt(variant.title);
+    variant.positioning = normalizeSingleProductPrompt(variant.positioning);
+    variant.basicSetting = normalizeSingleProductPrompt(variant.basicSetting);
+    variant.seedancePrompt = normalizeSingleProductPrompt(
+      variant.seedancePrompt,
+    );
+    variant.shots.forEach((shot) => {
+      shot.camera = normalizeSingleProductPrompt(shot.camera);
+      shot.visual = normalizeSingleProductPrompt(shot.visual);
+      shot.transition = normalizeSingleProductPrompt(shot.transition);
+    });
+  });
+  return response;
 }
 
 export async function analyzeVideo(input: {
@@ -923,6 +938,8 @@ export async function rewriteVideo(input: {
           `【用户确认的十项改写参数】\n${JSON.stringify(options)}`,
           `必须严格生成 ${options.variantCount} 条脚本。每条只主打一个核心卖点，最多一个副卖点。`,
           "台词必须内联到动作发生的画面描述中；时间码连续；全程中文、具体、正向描述。",
+          "当前网页只会把 1 张用户上传的产品图提交给方舟。basicSetting、shots 和 seedancePrompt 中只允许使用 @产品图；角色和场景必须用纯文字描述，不得创建 @真人脸图、@场景图、@白牙齿图 等未上传的素材占位。",
+          "成片提示词不得直接使用在世艺术家或知名工作室名称作为风格词；必须改写为可观察的媒介、造型、材质、配色、打光和动作节奏特征。",
           "seedancePrompt 必须把该版本的基础设定与全部分镜合并成可直接复制给 Seedance 的完整自然语言提示词。",
           "逐项执行八条合规终检，存疑项必须如实标注，不得用空泛的全部通过代替检查。",
         ].join("\n\n"),
