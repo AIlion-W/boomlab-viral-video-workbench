@@ -182,7 +182,7 @@ export function parseCreateArkTaskInput(value: unknown): CreateArkTaskInput {
     );
   }
 
-  const imageUrls = normalizeUrlList(value.imageUrls, "参考图片", 9);
+  const imageUrls = normalizeUrlList(value.imageUrls, "参考图片", 30);
   if (prompt.includes("@产品图") && imageUrls.length === 0) {
     throw new ArkRouteError(
       400,
@@ -205,6 +205,10 @@ export function parseCreateArkTaskInput(value: unknown): CreateArkTaskInput {
 
 export function isArkConfigured(): boolean {
   return Boolean(process.env.ARK_API_KEY?.trim());
+}
+
+export function assertArkConfigured(): void {
+  getArkApiKey();
 }
 
 export function validateArkTaskId(value: string): string {
@@ -296,11 +300,14 @@ export async function createArkTask(
   input: CreateArkTaskInput,
 ): Promise<{ id: string }> {
   const references = referenceContent(input);
+  const prompt = input.imageUrls.length
+    ? input.prompt.replaceAll("@产品图", "@图像1")
+    : input.prompt;
   const payload = await arkFetch("", {
     method: "POST",
     body: JSON.stringify({
       model: ARK_MODEL_ID,
-      content: [{ type: "text", text: input.prompt }, ...references],
+      content: [{ type: "text", text: prompt }, ...references],
       ...(references.length > 0
         ? { omni_reference_task_type: "reference" }
         : {}),
@@ -311,7 +318,6 @@ export async function createArkTask(
       watermark: false,
       output_format: "mp4",
       return_last_frame: false,
-      service_tier: "default",
       execution_expires_after: 7_200,
     }),
   });

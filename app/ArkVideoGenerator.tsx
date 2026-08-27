@@ -5,20 +5,6 @@ import { useEffect, useState } from "react";
 const MODEL_ID = "doubao-seedance-2-5-260628";
 const STORAGE_KEY = "boomlab:ark-video-task-id";
 
-const SAMPLE_PROMPT =
-  "全程使用视频1的第一视角构图，全程使用音频1作为背景音乐。第一人称视角果茶宣传广告，seedance牌「苹苹安安」苹果果茶限定款；首帧为图片1，你的手摘下一颗带晨露的阿克苏红苹果，轻脆的苹果碰撞声；2-4 秒：快速切镜，你的手将苹果块投入雪克杯，加入冰块与茶底，用力摇晃，冰块碰撞声与摇晃声卡点轻快鼓点，背景音：「鲜切现摇」；4-6 秒：第一人称成品特写，分层果茶倒入透明杯，你的手轻挤奶盖在顶部铺展，在杯身贴上粉红包标，镜头拉近看奶盖与果茶的分层纹理；6-8 秒：第一人称手持举杯，你将图片2中的果茶举到镜头前（模拟递到观众面前的视角），杯身标签清晰可见，背景音「来一口鲜爽」，尾帧定格为图片2。背景声音统一为女生音色。";
-
-const SAMPLE_REFERENCES = {
-  images: [
-    "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic1.jpg",
-    "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic2.jpg",
-  ],
-  video:
-    "https://ark-project.tos-cn-beijing.volces.com/doc_video/r2v_tea_video1.mp4",
-  audio:
-    "https://ark-project.tos-cn-beijing.volces.com/doc_audio/r2v_tea_audio1.mp3",
-};
-
 type TaskStatus =
   | "queued"
   | "running"
@@ -42,6 +28,11 @@ type TaskView = {
   ratio: string | null;
   resolution: string | null;
   generateAudio: boolean | null;
+};
+
+type ServiceConfig = {
+  configured: boolean;
+  arkConfigured: boolean;
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -87,20 +78,24 @@ function readError(payload: unknown, fallback: string): string {
 
 export default function ArkVideoGenerator({
   defaultPrompt,
+  productImage,
+  sourceRatio,
+  sourceDurationSeconds,
 }: {
   defaultPrompt: string;
+  productImage: File | null;
+  sourceRatio: string;
+  sourceDurationSeconds: number;
 }) {
-  const storageKey = `${STORAGE_KEY}:${promptFingerprint(defaultPrompt)}`;
+  const duration = Math.max(4, Math.min(30, Math.round(sourceDurationSeconds)));
+  const storageKey = `${STORAGE_KEY}:${promptFingerprint(
+    `${defaultPrompt}|${sourceRatio}|${duration}`,
+  )}`;
   const [prompt, setPrompt] = useState(defaultPrompt);
-  const [imageUrls, setImageUrls] = useState(["", ""]);
-  const [videoUrl, setVideoUrl] = useState("");
-  const [audioUrl, setAudioUrl] = useState("");
-  const [ratio, setRatio] = useState("16:9");
-  const [duration, setDuration] = useState(15);
   const [generateAudio, setGenerateAudio] = useState(true);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [task, setTask] = useState<TaskView | null>(null);
-  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [config, setConfig] = useState<ServiceConfig | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -109,19 +104,26 @@ export default function ArkVideoGenerator({
     fetch("/api/seedance/config", { cache: "no-store" })
       .then(async (response) => {
         const payload: unknown = await response.json();
-        return (
-          response.ok &&
-          typeof payload === "object" &&
-          payload !== null &&
-          "configured" in payload &&
-          payload.configured === true
-        );
+        if (
+          !response.ok ||
+          typeof payload !== "object" ||
+          payload === null ||
+          !("configured" in payload)
+        ) {
+          throw new Error("无法读取视频服务配置。");
+        }
+        return payload as ServiceConfig;
       })
-      .then((isConfigured) => {
-        if (!disposed) setConfigured(isConfigured);
+      .then((nextConfig) => {
+        if (!disposed) setConfig(nextConfig);
       })
       .catch(() => {
-        if (!disposed) setConfigured(false);
+        if (!disposed) {
+          setConfig({
+            configured: false,
+            arkConfigured: false,
+          });
+        }
       });
 
     return () => {
@@ -182,9 +184,7 @@ export default function ArkVideoGenerator({
       }
 
       if (attempts >= 240) {
-        setError(
-          "页面轮询已暂停；可以保留任务 ID 稍后查看，或清除后重新创建。",
-        );
+        setError("页面轮询已暂停；可以保留任务 ID 稍后查看，或清除后重新创建。");
         return;
       }
 
@@ -205,33 +205,13 @@ export default function ArkVideoGenerator({
     setError("");
   };
 
-  const loadOfficialSample = () => {
-    setPrompt(SAMPLE_PROMPT);
-    setImageUrls(SAMPLE_REFERENCES.images);
-    setVideoUrl(SAMPLE_REFERENCES.video);
-    setAudioUrl(SAMPLE_REFERENCES.audio);
-    setRatio("16:9");
-    setDuration(11);
-    setGenerateAudio(true);
-    setError("");
-  };
-
-  const updateImageUrl = (index: number, value: string) => {
-    setImageUrls((current) =>
-      current.map((item, itemIndex) => (itemIndex === index ? value : item)),
-    );
-  };
-
   const submit = async () => {
-    if (configured !== true) {
-      setError("服务端尚未配置视频生成密钥，暂时不能创建任务。");
+    if (!config?.arkConfigured) {
+      setError("服务端尚未配置火山方舟 ARK_API_KEY，暂时不能创建任务。");
       return;
     }
-    if (
-      prompt.includes("@产品图") &&
-      !imageUrls.some((url) => Boolean(url.trim()))
-    ) {
-      setError("提示词包含 @产品图，请先填写至少一个参考图片 HTTPS 地址。");
+    if (!productImage) {
+      setError("请先在上传素材步骤添加产品白底图。");
       return;
     }
 
@@ -242,18 +222,15 @@ export default function ArkVideoGenerator({
     window.localStorage.removeItem(storageKey);
 
     try {
+      const form = new FormData();
+      form.append("prompt", prompt);
+      form.append("productImage", productImage);
+      form.append("ratio", sourceRatio);
+      form.append("duration", String(duration));
+      form.append("generateAudio", String(generateAudio));
       const response = await fetch("/api/seedance/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          imageUrls,
-          videoUrls: [videoUrl],
-          audioUrls: [audioUrl],
-          ratio,
-          duration,
-          generateAudio,
-        }),
+        body: form,
       });
       const payload: unknown = await response.json();
       if (!response.ok) {
@@ -279,7 +256,7 @@ export default function ArkVideoGenerator({
         createdAt: null,
         updatedAt: null,
         duration,
-        ratio,
+        ratio: sourceRatio,
         resolution: "720p",
         generateAudio,
       };
@@ -302,33 +279,31 @@ export default function ArkVideoGenerator({
     task?.status === "running" ||
     task?.status === "unknown";
 
+  const connectionLabel =
+    config === null
+      ? "正在检测"
+      : config.configured
+        ? "火山方舟已连接"
+        : "方舟 Key 待配置";
+
   return (
     <section className="card arkGenerator">
       <div className="arkHeading">
         <div>
           <em>VIDEO GENERATION</em>
           <h3>火山方舟 · Seedance 2.5</h3>
-          <p>
-            服务端安全提交任务，页面每 10 秒查询一次；完成后会直接在这里播放。
-          </p>
+          <p>产品白底图由服务端编码后直接随提示词提交到火山方舟。</p>
         </div>
         <span
-          className={`arkConnected ${configured === false ? "arkDisconnected" : ""}`}
+          className={`arkConnected ${config?.configured === false ? "arkDisconnected" : ""}`}
         >
-          {configured === null
-            ? "正在检测"
-            : configured
-              ? "服务端已连接"
-              : "服务端待配置"}
+          {connectionLabel}
         </span>
       </div>
 
       <div className="arkModelRow">
         <span>模型</span>
         <code>{MODEL_ID}</code>
-        <button type="button" onClick={loadOfficialSample}>
-          载入官方示例
-        </button>
       </div>
 
       <label className="arkPrompt">
@@ -340,80 +315,32 @@ export default function ArkVideoGenerator({
         />
       </label>
 
-      <details className="arkReferences" open>
-        <summary>参考素材 URL</summary>
-        <p>方舟必须能访问 HTTPS 公网地址；此前在本机选择的文件不会自动上传。</p>
-        <div className="arkReferenceGrid">
-          {imageUrls.map((value, index) => (
-            <label key={`image-${index}`}>
-              图片 {index + 1}
-              <input
-                type="url"
-                value={value}
-                onChange={(event) => updateImageUrl(index, event.target.value)}
-                placeholder="https://…/product.jpg"
-              />
-            </label>
-          ))}
-          <label>
-            参考视频 1
-            <input
-              type="url"
-              value={videoUrl}
-              onChange={(event) => setVideoUrl(event.target.value)}
-              placeholder="https://…/reference.mp4"
-            />
-          </label>
-          <label>
-            参考音频 1
-            <input
-              type="url"
-              value={audioUrl}
-              onChange={(event) => setAudioUrl(event.target.value)}
-              placeholder="https://…/music.mp3"
-            />
-          </label>
+      <div className="arkSourceSpecs">
+        <div>
+          <small>产品参考图</small>
+          <b>{productImage?.name ?? "尚未上传"}</b>
+          <span>{productImage ? "创建任务时直接提交到火山方舟" : "返回第 1 步添加产品白底图"}</span>
         </div>
-      </details>
-
-      <div className="arkOptions">
-        <label>
-          画面比例
-          <select
-            value={ratio}
-            onChange={(event) => setRatio(event.target.value)}
-          >
-            <option value="16:9">16:9 横屏</option>
-            <option value="9:16">9:16 竖屏</option>
-            <option value="1:1">1:1 方形</option>
-            <option value="4:3">4:3</option>
-            <option value="3:4">3:4</option>
-            <option value="21:9">21:9</option>
-            <option value="adaptive">自动适配</option>
-          </select>
-        </label>
-        <label>
-          视频时长
-          <select
-            value={duration}
-            onChange={(event) => setDuration(Number(event.target.value))}
-          >
-            {[4, 5, 6, 8, 10, 11, 12, 15, 20, 25, 30].map((seconds) => (
-              <option value={seconds} key={seconds}>
-                {seconds} 秒
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="arkAudioToggle">
-          <input
-            type="checkbox"
-            checked={generateAudio}
-            onChange={(event) => setGenerateAudio(event.target.checked)}
-          />
-          生成同步音频
-        </label>
+        <div>
+          <small>画面比例</small>
+          <b>{sourceRatio}</b>
+          <span>锁定参考原视频</span>
+        </div>
+        <div>
+          <small>视频时长</small>
+          <b>{duration} 秒</b>
+          <span>锁定参考原视频</span>
+        </div>
       </div>
+
+      <label className="arkAudioToggle arkAudioControl">
+        <input
+          type="checkbox"
+          checked={generateAudio}
+          onChange={(event) => setGenerateAudio(event.target.checked)}
+        />
+        生成同步音频
+      </label>
 
       <div className="arkSubmitRow">
         <div>
@@ -422,11 +349,16 @@ export default function ArkVideoGenerator({
         </div>
         <button
           type="button"
-          disabled={submitting || active || configured !== true}
+          disabled={
+            submitting ||
+            active ||
+            config?.configured !== true ||
+            !productImage
+          }
           onClick={submit}
         >
           {submitting
-            ? "正在创建任务…"
+            ? "正在上传并创建任务…"
             : active && task
               ? STATUS_LABELS[task.status]
               : "创建视频任务 →"}
@@ -484,7 +416,7 @@ export default function ArkVideoGenerator({
       )}
 
       <p className="arkSecurityNote">
-        API Key 仅由服务端环境变量读取，不会进入浏览器或提交到仓库。
+        方舟 API Key 仅由服务端环境变量读取，不会进入浏览器或提交到仓库。
       </p>
     </section>
   );

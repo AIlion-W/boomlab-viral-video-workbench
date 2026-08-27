@@ -382,7 +382,12 @@ test("reports Ark server configuration without exposing a key", async () => {
     const response = await request("/api/seedance/config");
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
-    assert.deepEqual(await response.json(), { configured: false });
+    assert.deepEqual(await response.json(), {
+      configured: false,
+      arkConfigured: false,
+      provider: "volcengine",
+      model: "doubao-seedance-2-5-260628",
+    });
   } finally {
     if (previousKey === undefined) delete process.env.ARK_API_KEY;
     else process.env.ARK_API_KEY = previousKey;
@@ -475,6 +480,7 @@ test("keeps Ark credentials server-side and normalizes task results", async () =
     assert.equal(upstreamBody.model, "doubao-seedance-2-5-260628");
     assert.equal(upstreamBody.omni_reference_task_type, "reference");
     assert.equal(upstreamBody.content[1].role, "reference_image");
+    assert.equal("service_tier" in upstreamBody, false);
 
     const queryResponse = await request("/api/seedance/tasks/cgt-test1234");
     assert.equal(queryResponse.status, 200);
@@ -488,5 +494,70 @@ test("keeps Ark credentials server-side and normalizes task results", async () =
     globalThis.fetch = originalFetch;
     if (previousKey === undefined) delete process.env.ARK_API_KEY;
     else process.env.ARK_API_KEY = previousKey;
+  }
+});
+
+test("sends the uploaded product image directly in a locked Seedance task", async () => {
+  const names = ["ARK_API_KEY"];
+  const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  Object.assign(process.env, {
+    ARK_API_KEY: "ark-test-key-never-send",
+  });
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    requests.push({ url, init });
+    return Response.json({ id: "cgt-upload1234" });
+  };
+
+  try {
+    const form = new FormData();
+    form.append("prompt", "让 @产品图 保持包装一致");
+    form.append(
+      "productImage",
+      new File(["white-background-product"], "product.png", { type: "image/png" }),
+    );
+    form.append("ratio", "9:16");
+    form.append("duration", "17");
+    form.append("generateAudio", "true");
+    const response = await request("/api/seedance/tasks", {
+      method: "POST",
+      body: form,
+    });
+
+    assert.equal(response.status, 202);
+    assert.deepEqual(await response.json(), {
+      id: "cgt-upload1234",
+      status: "queued",
+    });
+    assert.equal(requests.length, 1);
+
+    const ark = requests[0];
+    assert.equal(
+      new Headers(ark.init.headers).get("authorization"),
+      "Bearer ark-test-key-never-send",
+    );
+    const body = JSON.parse(ark.init.body);
+    assert.equal(body.model, "doubao-seedance-2-5-260628");
+    assert.equal(body.ratio, "9:16");
+    assert.equal(body.duration, 17);
+    assert.equal("service_tier" in body, false);
+    assert.equal(body.content[0].text, "让 @图像1 保持包装一致");
+    assert.equal(
+      body.content[1].image_url.url,
+      "data:image/png;base64,d2hpdGUtYmFja2dyb3VuZC1wcm9kdWN0",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
   }
 });

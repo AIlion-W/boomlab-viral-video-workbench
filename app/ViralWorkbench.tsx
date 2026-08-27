@@ -16,6 +16,7 @@ const MAX_VIDEO_BYTES = 15 * 1024 * 1024;
 
 type ServiceConfig = {
   configured: boolean;
+  arkConfigured?: boolean;
   provider?: string;
   model?: string;
   maxVideoBytes?: number;
@@ -37,15 +38,45 @@ function readError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-function videoDuration(file: File): Promise<number> {
+type VideoMetadata = {
+  duration: number;
+  width: number;
+  height: number;
+  ratio: string;
+};
+
+const SUPPORTED_VIDEO_RATIOS = [
+  ["21:9", 21 / 9],
+  ["16:9", 16 / 9],
+  ["4:3", 4 / 3],
+  ["1:1", 1],
+  ["3:4", 3 / 4],
+  ["9:16", 9 / 16],
+] as const;
+
+function nearestVideoRatio(width: number, height: number): string {
+  const actual = width / height;
+  return SUPPORTED_VIDEO_RATIOS.reduce((best, candidate) =>
+    Math.abs(Math.log(actual / candidate[1])) <
+    Math.abs(Math.log(actual / best[1]))
+      ? candidate
+      : best,
+  )[0];
+}
+
+function videoMetadata(file: File): Promise<VideoMetadata> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const video = document.createElement("video");
     video.preload = "metadata";
     video.onloadedmetadata = () => {
       const duration = video.duration;
+      const width = video.videoWidth;
+      const height = video.videoHeight;
       URL.revokeObjectURL(url);
-      if (Number.isFinite(duration)) resolve(duration);
+      if (Number.isFinite(duration) && width > 0 && height > 0) {
+        resolve({ duration, width, height, ratio: nearestVideoRatio(width, height) });
+      }
       else reject(new Error("无法读取视频时长。"));
     };
     video.onerror = () => {
@@ -84,6 +115,9 @@ export default function ViralWorkbench() {
   const [step, setStep] = useState(1);
   const [video, setVideo] = useState<File | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(0);
+  const [videoWidth, setVideoWidth] = useState(0);
+  const [videoHeight, setVideoHeight] = useState(0);
+  const [videoRatio, setVideoRatio] = useState("16:9");
   const [images, setImages] = useState<File[]>([]);
   const [performanceData, setPerformanceData] = useState("");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -143,6 +177,8 @@ export default function ViralWorkbench() {
     if (!file) {
       setVideo(null);
       setDurationSeconds(0);
+      setVideoWidth(0);
+      setVideoHeight(0);
       return;
     }
     if (!["video/mp4", "video/quicktime", "video/webm"].includes(file.type)) {
@@ -156,18 +192,30 @@ export default function ViralWorkbench() {
       return;
     }
     try {
-      const duration = await videoDuration(file);
+      const metadata = await videoMetadata(file);
+      const duration = metadata.duration;
       if (duration < 5) {
         setVideo(null);
         setDurationSeconds(0);
         setError("当前视频不足 5 秒，建议上传 10 秒以上视频。");
         return;
       }
+      if (duration > 30) {
+        setVideo(null);
+        setDurationSeconds(0);
+        setError("Seedance 2.5 最长生成 30 秒，请上传不超过 30 秒的原视频。");
+        return;
+      }
       setVideo(file);
       setDurationSeconds(duration);
+      setVideoWidth(metadata.width);
+      setVideoHeight(metadata.height);
+      setVideoRatio(metadata.ratio);
     } catch (durationError) {
       setVideo(null);
       setDurationSeconds(0);
+      setVideoWidth(0);
+      setVideoHeight(0);
       setError(
         durationError instanceof Error
           ? durationError.message
@@ -202,7 +250,10 @@ export default function ViralWorkbench() {
       }
       const nextAnalysis = payload.analysis as AnalysisResult;
       setAnalysis(nextAnalysis);
-      setOptions(nextAnalysis.defaults);
+      setOptions({
+        ...nextAnalysis.defaults,
+        durationSeconds: Math.max(5, Math.min(30, Math.round(durationSeconds))),
+      });
       setResult(null);
       setStep(2);
     } catch (analysisError) {
@@ -308,6 +359,9 @@ export default function ViralWorkbench() {
                 <UploadStep
                   video={video}
                   durationSeconds={durationSeconds}
+                  videoWidth={videoWidth}
+                  videoHeight={videoHeight}
+                  videoRatio={videoRatio}
                   images={images}
                   performanceData={performanceData}
                   setImages={setImages}
@@ -347,6 +401,9 @@ export default function ViralWorkbench() {
                   setStep={setStep}
                   copyActive={copyActive}
                   downloadAll={downloadAll}
+                  productImage={images[0] ?? null}
+                  sourceRatio={videoRatio}
+                  sourceDurationSeconds={durationSeconds}
                 />
               )}
             </>
@@ -400,6 +457,9 @@ function Heading({ eyebrow, title, desc, badge }: { eyebrow: string; title: stri
 function UploadStep({
   video,
   durationSeconds,
+  videoWidth,
+  videoHeight,
+  videoRatio,
   images,
   performanceData,
   setImages,
@@ -414,6 +474,9 @@ function UploadStep({
 }: {
   video: File | null;
   durationSeconds: number;
+  videoWidth: number;
+  videoHeight: number;
+  videoRatio: string;
   images: File[];
   performanceData: string;
   setImages: (files: File[]) => void;
@@ -448,15 +511,15 @@ function UploadStep({
           <h2>{video ? video.name : "拖入一条爆款短视频"}</h2>
           <p>
             {video
-              ? `${(video.size / 1024 / 1024).toFixed(1)} MB · ${durationSeconds.toFixed(1)} 秒`
-              : "支持 MP4、MOV、WebM · 5–60 秒 · 最大 15MB"}
+              ? `${(video.size / 1024 / 1024).toFixed(1)} MB · ${videoWidth}×${videoHeight} · ${videoRatio} · ${durationSeconds.toFixed(1)} 秒`
+              : "支持 MP4、MOV、WebM · 5–30 秒 · 最大 15MB"}
           </p>
           <strong>{video ? "重新选择视频" : "选择视频文件"}</strong>
         </button>
         <div className="sideCards">
           <section className="card">
             <div className="cardTitle"><div><em>PRODUCT ASSETS</em><h3>产品图片</h3></div><small>{images.length}/6</small></div>
-            <p className="muted">图片保留为 @产品图 占位参考，本次不会自动上传公网。</p>
+            <p className="muted">第 1 张产品白底图会由服务端直接提交给 Seedance，并作为视频参考图。</p>
             <div className="imageList">
               {images.map((file, index) => (
                 <div key={`${file.name}-${index}`} title={file.name}>
@@ -468,7 +531,7 @@ function UploadStep({
               <input
                 ref={imageRef}
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp"
                 multiple
                 hidden
                 onChange={(event) => setImages([...images, ...Array.from(event.target.files ?? [])].slice(0, 6))}
@@ -553,7 +616,7 @@ function RewriteStep({ analysis, options, setOptions, setStep, rewrite, busy, er
           <label>6 · 副卖点<select value={options.secondarySellingPoint} onChange={(event) => update("secondarySellingPoint", event.target.value)}>{optionsWithCurrent(options.secondarySellingPoint, ["不使用副卖点", "清新口气", "草本护龈"]).map((item) => <option key={item}>{item}</option>)}</select></label>
           <label>7 · 痛点开场<select value={options.painOpening} onChange={(event) => update("painOpening", event.target.value)}>{optionsWithCurrent(options.painOpening, ["烟茶酒牙黄", "火锅咖啡奶茶牙黄", "牙面黄渍", "晨起口气", "冷热酸敏感"]).map((item) => <option key={item}>{item}</option>)}</select></label>
           <label>8 · 场景<select value={options.scene} onChange={(event) => update("scene", event.target.value)}>{optionsWithCurrent(options.scene, ["洗手台", "抽烟或喝咖啡后", "晨起", "社交见人前"]).map((item) => <option key={item}>{item}</option>)}</select></label>
-          <label>9 · 目标时长<input type="number" min={5} max={30} value={options.durationSeconds} onChange={(event) => update("durationSeconds", Math.max(5, Math.min(30, Number(event.target.value) || 5)))} /></label>
+          <label>9 · 目标时长<input type="number" min={5} max={30} value={options.durationSeconds} readOnly title="已锁定参考原视频时长" /><small className="lockedFieldNote">跟随原视频</small></label>
           <label>10 · 出稿数量<select value={options.variantCount} onChange={(event) => update("variantCount", Number(event.target.value) as 1 | 3)}><option value={1}>1 条主推</option><option value={3}>主推 + 2 个变体</option></select></label>
         </div></section>
       </div>
@@ -564,7 +627,7 @@ function RewriteStep({ analysis, options, setOptions, setStep, rewrite, busy, er
   );
 }
 
-function DeliveryStep({ result, activeVariant, setActiveVariant, setStep, copyActive, downloadAll }: { result: RewriteResponse; activeVariant: number; setActiveVariant: (index: number) => void; setStep: (step: number) => void; copyActive: () => Promise<void>; downloadAll: () => void }) {
+function DeliveryStep({ result, activeVariant, setActiveVariant, setStep, copyActive, downloadAll, productImage, sourceRatio, sourceDurationSeconds }: { result: RewriteResponse; activeVariant: number; setActiveVariant: (index: number) => void; setStep: (step: number) => void; copyActive: () => Promise<void>; downloadAll: () => void; productImage: File | null; sourceRatio: string; sourceDurationSeconds: number }) {
   const variant = result.variants[activeVariant];
   return (
     <>
@@ -574,7 +637,7 @@ function DeliveryStep({ result, activeVariant, setActiveVariant, setStep, copyAc
       <section className="resultHead"><div><em>GEMINI DELIVERY</em><h2>{variant.title}</h2><p>{variant.positioning}</p></div><div><button type="button" className="secondary" onClick={() => void copyActive()}>复制当前版</button><button type="button" onClick={downloadAll}>导出全部 TXT</button></div></section>
       <section className="paper"><div><em>01</em><article><h3>脚本定位</h3><p>{variant.positioning}</p></article></div><div><em>02</em><article><h3>基础设定</h3><p>{variant.basicSetting}</p></article></div><div><em>03</em><article><h3>专业分镜脚本</h3>{variant.shots.map((shot, index) => <div className="scriptShot" key={`${shot.title}-${index}`}><b>{String(index + 1).padStart(2, "0")}</b><div><h4>{shot.title} · {shot.timeRange}</h4><p><strong>{shot.camera}</strong><br />{shot.visual}</p><small>音效：{shot.audio} ｜ 转场：{shot.transition}</small></div></div>)}</article></div></section>
       <div className="twoCols"><section className="card"><h3>合规终检 <span className={variant.complianceChecks.every((item) => item.status === "通过") ? "ok" : "reviewBadge"}>{variant.complianceChecks.every((item) => item.status === "通过") ? "全部通过" : "存在存疑项"}</span></h3>{variant.complianceChecks.map((item) => <p className={item.status === "通过" ? "check" : "warningItem"} key={`${item.label}-${item.detail}`}>{item.status === "通过" ? "✓" : "⚠️"} {item.label}：{item.detail}</p>)}</section><section className="card"><h3>出片提醒</h3>{variant.reminders.map((item) => <p className="reviewItem" key={item}>{item}</p>)}</section></div>
-      <ArkVideoGenerator key={variant.id} defaultPrompt={variant.seedancePrompt} />
+      <ArkVideoGenerator key={variant.id} defaultPrompt={variant.seedancePrompt} productImage={productImage} sourceRatio={sourceRatio} sourceDurationSeconds={sourceDurationSeconds} />
       <div className="actions"><button type="button" className="secondary" onClick={() => setStep(3)}>← 调整改写参数</button></div>
     </>
   );
@@ -592,7 +655,7 @@ function Knowledge() {
 function Settings({ openLux, ark }: { openLux: ServiceConfig | null; ark: ServiceConfig | null }) {
   const services = [
     { number: "01", title: "视频理解与脚本改写", desc: "读取视频画面与声音，输出拆解、交接单和 Seedance 分镜。", label: "OpenLux · Gemini", model: openLux?.model ?? "gemini-2.5-pro", configured: openLux?.configured },
-    { number: "02", title: "视频生成 API", desc: "创建火山方舟异步任务、轮询状态，并返回生成视频。", label: "火山方舟 · Seedance 2.5", model: "doubao-seedance-2-5-260628", configured: ark?.configured },
+    { number: "02", title: "视频生成 API", desc: "将产品白底图由服务端直接提交到方舟，创建异步任务并轮询结果。", label: "火山方舟 · Seedance 2.5", model: ark?.model ?? "doubao-seedance-2-5-260628", configured: ark?.configured },
   ];
   return <><Heading eyebrow="MODEL CONNECTIONS" title="API 设置" desc="所有密钥均由服务端环境读取，浏览器只显示连接状态。" /><div className="security"><b>密钥安全</b><p>页面、HTML、接口响应和导出文件中都不会包含 API Key。</p></div>{services.map((service) => <section className="card apiCard managedApi" key={service.number}><b>{service.number}</b><div><h2>{service.title}</h2><p>{service.desc}</p><div className="serverManaged"><b>{service.label}</b><code>{service.model}</code><small>服务端托管 · 本地环境配置</small></div></div><span className={service.configured ? "connectedBadge" : ""}>{service.configured === undefined ? "正在检测" : service.configured ? "已连接" : "待配置"}</span></section>)}</>;
 }

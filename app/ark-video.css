@@ -217,6 +217,76 @@
   accent-color: var(--accent);
 }
 
+.arkSourceSpecs {
+  display: grid;
+  grid-template-columns: 1.8fr 0.7fr 0.7fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.arkSourceSpecs > div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #faf9f6;
+  padding: 13px 14px;
+}
+
+.arkSourceSpecs small,
+.arkSourceSpecs b,
+.arkSourceSpecs span {
+  display: block;
+}
+
+.arkSourceSpecs small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.arkSourceSpecs b {
+  overflow: hidden;
+  margin-top: 6px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arkSourceSpecs span {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.arkAudioControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+  color: #58544d;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.formGrid input[type="number"] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f1efe9;
+  color: #6d6961;
+  padding: 10px;
+}
+
+.lockedFieldNote {
+  display: block;
+  margin-top: 5px;
+  color: var(--green);
+  font-size: 9px;
+}
+
 .arkSubmitRow {
   display: flex;
   align-items: center;
@@ -390,6 +460,7 @@
 
   .arkReferenceGrid,
   .arkOptions,
+  .arkSourceSpecs,
   .arkVideoResult {
     grid-template-columns: 1fr;
   }
